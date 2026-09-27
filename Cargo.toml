@@ -1,7 +1,8 @@
 [package]
 name = "lsm303-driver"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+rust-version = "1.75"
 description = "no_std driver for the ST LSM303 accelerometer + magnetometer family (GY-511)"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/I-Azy-I/lsm303-driver"

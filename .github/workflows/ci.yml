@@ -22,6 +22,24 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --no-default-features --features ${{ matrix.features }}
 
+  msrv:
+    name: MSRV 1.75 (${{ matrix.features }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        features: ["async", "sync", "async,defmt", "sync,defmt"]
+    steps:
+      - uses: actions/checkout@v4
+      # Resolve dependencies with a recent Cargo, picking only versions that
+      # support the `rust-version` in Cargo.toml (Cargo 1.75 can't do this).
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo generate-lockfile
+        env:
+          CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS: fallback
+      - uses: dtolnay/rust-toolchain@1.75
+      - run: cargo +1.75 check --no-default-features --features ${{ matrix.features }}
+
   no-std:
     name: Build for bare metal (${{ matrix.features }})
     runs-on: ubuntu-latest
