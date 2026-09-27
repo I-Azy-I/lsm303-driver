@@ -1,5 +1,10 @@
 # lsm303-driver
 
+[![crates.io](https://img.shields.io/crates/v/lsm303-driver.svg)](https://crates.io/crates/lsm303-driver)
+[![docs.rs](https://docs.rs/lsm303-driver/badge.svg)](https://docs.rs/lsm303-driver)
+[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
+[![no_std](https://img.shields.io/badge/no__std-yes-green.svg)](https://docs.rust-embedded.org/book/intro/no-std.html)
+
 A `no_std` Rust driver for the ST LSM303 accelerometer + magnetometer family
 (also sold as the **GY-511** breakout board):
 
@@ -14,10 +19,10 @@ for the blocking API.
 ## Usage
 
 ```rust
-use lsm303_driver::{LSM303, D, SA0};
+use lsm303_driver::{Lsm303, D, SA0};
 
 // `i2c` is any `embedded_hal_async::i2c::I2c` implementation.
-let mut sensor = LSM303::<_, D>::new(i2c, SA0::High);
+let mut sensor = Lsm303::<_, D>::new(i2c, SA0::High);
 sensor.enable_default().await?;
 
 let (accel, mag) = sensor.read().await?;
@@ -27,11 +32,11 @@ let (accel, mag) = sensor.read().await?;
 Don't know which chip you have? Let the driver detect it:
 
 ```rust
-use lsm303_driver::{AnyLsm303, LSM303, D};
+use lsm303_driver::{AnyLsm303, Lsm303, D};
 
 let found = AnyLsm303::detect(&mut i2c, None, None).await?;
 
-let mut sensor: LSM303<_, D> = match found.into_driver(i2c) {
+let mut sensor: Lsm303<_, D> = match found.into_driver(i2c) {
     Ok(sensor) => sensor,
     Err(other) => panic!("expected an LSM303D, found {:?}", other),
 };
@@ -55,3 +60,13 @@ datasheets but not yet tested on hardware.
 
 Based on Pololu's [LSM303 Arduino library](https://github.com/pololu/lsm303-arduino):
 device detection, register map and default configuration are ported from it.
+Pololu's copyright and MIT license notice is kept in [LICENSE-POLOLU](LICENSE-POLOLU).
+
+## License
+
+Licensed under either of
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
+
+at your option.
