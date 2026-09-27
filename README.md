@@ -1,5 +1,6 @@
 # lsm303-driver
 
+[![CI](https://github.com/I-Azy-I/lsm303-driver/actions/workflows/ci.yml/badge.svg)](https://github.com/I-Azy-I/lsm303-driver/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/lsm303-driver.svg)](https://crates.io/crates/lsm303-driver)
 [![docs.rs](https://docs.rs/lsm303-driver/badge.svg)](https://docs.rs/lsm303-driver)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
