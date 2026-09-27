@@ -13,10 +13,10 @@
 //! # Usage
 //!
 //! ```ignore
-//! use lsm303_driver::{LSM303, D, SA0};
+//! use lsm303_driver::{Lsm303, D, SA0};
 //!
 //! // `i2c` is any `embedded_hal_async::i2c::I2c` implementation.
-//! let mut sensor = LSM303::<_, D>::new(i2c, SA0::High);
+//! let mut sensor = Lsm303::<_, D>::new(i2c, SA0::High);
 //! sensor.enable_default().await?;
 //!
 //! let (accel, mag) = sensor.read().await?;
@@ -26,11 +26,11 @@
 //! Don't know which chip you have? Let the driver detect it:
 //!
 //! ```ignore
-//! use lsm303_driver::{AnyLsm303, LSM303, D};
+//! use lsm303_driver::{AnyLsm303, Lsm303, D};
 //!
 //! let found = AnyLsm303::detect(&mut i2c, None, None).await?;
 //!
-//! let mut sensor: LSM303<_, D> = match found.into_driver(i2c) {
+//! let mut sensor: Lsm303<_, D> = match found.into_driver(i2c) {
 //!     Ok(sensor) => sensor,
 //!     Err(other) => panic!("expected an LSM303D, found {:?}", other),
 //! };
@@ -57,6 +57,8 @@ compile_error!(
 compile_error!("enable exactly one of the `sync` or `async` features");
 
 mod lsm303_registers;
+#[cfg(test)]
+mod tests;
 
 use lsm303_registers::*;
 
@@ -438,19 +440,29 @@ impl DMagOdr {
     }
 }
 
+/// Chip variant, as a runtime value. Returned by [`AnyLsm303::device`].
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Device {
+    /// LSM303DLH
     Dlh,
+    /// LSM303DLM
     Dlm,
+    /// LSM303DLHC
     Dlhc,
+    /// LSM303D
     D,
 }
 
+/// State of the chip's SA0 pin, which selects its I²C address.
+///
+/// Ignored on the DLHC, whose addresses are fixed.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum SA0 {
+    /// SA0 tied to ground.
     Low,
+    /// SA0 tied to supply.
     High,
 }
 
@@ -458,7 +470,9 @@ pub enum SA0 {
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Error<E> {
+    /// Error from the underlying I²C bus.
     I2c(E),
+    /// Detection found no LSM303 on the bus.
     DeviceNotFound,
 }
 
@@ -466,8 +480,11 @@ pub enum Error<E> {
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Vector {
+    /// X axis.
     pub x: i16,
+    /// Y axis.
     pub y: i16,
+    /// Z axis.
     pub z: i16,
 }
 
@@ -482,9 +499,13 @@ mod detect {
     pub const WHO_ID_D: u8 = 0x49;
     pub const WHO_ID_DLM: u8 = 0x3C;
 }
+/// Marker type for the LSM303DLH, used as `Lsm303<I2C, Dlh>`.
 pub struct Dlh;
+/// Marker type for the LSM303DLM, used as `Lsm303<I2C, Dlm>`.
 pub struct Dlm;
+/// Marker type for the LSM303DLHC, used as `Lsm303<I2C, Dlhc>`.
 pub struct Dlhc;
+/// Marker type for the LSM303D, used as `Lsm303<I2C, D>`.
 pub struct D;
 
 /// Marker for the DLH/DLM/DLHC family, which share the magnetometer full-scale
@@ -530,7 +551,7 @@ pub trait Variant: Sized {
     /// Apply the power-on default configuration:
     /// enable both sensors at their datasheet-specified
     /// output data rates and full scales.
-    async fn enable_default<I2C: I2c>(dev: &mut LSM303<I2C, Self>)
+    async fn enable_default<I2C: I2c>(dev: &mut Lsm303<I2C, Self>)
     -> Result<(), Error<I2C::Error>>;
 }
 #[maybe_async_cfg::maybe(sync(feature = "sync", keep_self), async(feature = "async", keep_self))]
@@ -561,7 +582,7 @@ impl Variant for D {
     }
 
     async fn enable_default<I2C: I2c>(
-        dev: &mut LSM303<I2C, Self>,
+        dev: &mut Lsm303<I2C, Self>,
     ) -> Result<(), Error<I2C::Error>> {
         // acc_address == mag_address on the D, so either accessor works.
         dev.write_mag_reg(reg_addr::CTRL2, 0x00).await?; // accel +/-2 g
@@ -596,7 +617,7 @@ impl Variant for Dlhc {
     }
 
     async fn enable_default<I2C: I2c>(
-        dev: &mut LSM303<I2C, Self>,
+        dev: &mut Lsm303<I2C, Self>,
     ) -> Result<(), Error<I2C::Error>> {
         dev.write_acc_reg(reg_addr::CTRL_REG4_A, 0x08).await?; // +/-2 g, high-res
         dev.write_acc_reg(reg_addr::CTRL_REG1_A, 0x47).await?; // 50 Hz, all axes on
@@ -633,7 +654,7 @@ impl Variant for Dlm {
     }
 
     async fn enable_default<I2C: I2c>(
-        dev: &mut LSM303<I2C, Self>,
+        dev: &mut Lsm303<I2C, Self>,
     ) -> Result<(), Error<I2C::Error>> {
         dev.write_acc_reg(reg_addr::CTRL_REG4_A, 0x00).await?; // +/-2 g
         dev.write_acc_reg(reg_addr::CTRL_REG1_A, 0x27).await?; // normal, 50 Hz, all axes
@@ -670,7 +691,7 @@ impl Variant for Dlh {
     }
 
     async fn enable_default<I2C: I2c>(
-        dev: &mut LSM303<I2C, Self>,
+        dev: &mut Lsm303<I2C, Self>,
     ) -> Result<(), Error<I2C::Error>> {
         dev.write_acc_reg(reg_addr::CTRL_REG4_A, 0x00).await?;
         dev.write_acc_reg(reg_addr::CTRL_REG1_A, 0x27).await?;
@@ -681,6 +702,10 @@ impl Variant for Dlh {
     }
 }
 
+/// Result of probing the bus: which chip was found and its SA0 state.
+///
+/// Get one from [`AnyLsm303::detect`], then turn it into a typed driver with
+/// [`AnyLsm303::into_driver`].
 pub struct AnyLsm303 {
     device: Device,
     sa0: SA0,
@@ -688,7 +713,10 @@ pub struct AnyLsm303 {
 
 #[maybe_async_cfg::maybe(sync(feature = "sync", keep_self), async(feature = "async", keep_self))]
 impl AnyLsm303 {
-    /// Probe the bus and return a typed driver for whatever's found.
+    /// Probe the bus for an LSM303.
+    ///
+    /// Pass `Some` for `device` and/or `sa0` to restrict the search; with both
+    /// set, the bus is not probed at all.
     pub async fn detect<I2C: I2c>(
         i2c: &mut I2C,
         device: Option<Device>,
@@ -818,22 +846,27 @@ impl AnyLsm303 {
     }
 
     /// Turn a detection result into a typed driver, taking ownership of the bus.
-    pub fn into_driver<I2C: I2c, V: Variant>(self, i2c: I2C) -> Result<LSM303<I2C, V>, Device> {
+    pub fn into_driver<I2C: I2c, V: Variant>(self, i2c: I2C) -> Result<Lsm303<I2C, V>, Device> {
         if self.device != V::DEVICE {
             return Err(self.device);
         }
-        Ok(LSM303::new_typed(i2c, self.sa0))
+        Ok(Lsm303::new_typed(i2c, self.sa0))
     }
 }
 
-#[allow(non_snake_case)]
-pub struct LSM303<I2C, V> {
+/// Driver for one LSM303 chip on an I²C bus.
+///
+/// `V` is the chip variant ([`Dlh`], [`Dlm`], [`Dlhc`] or [`D`]); it selects
+/// the addresses, register layout and which settings are available. Create one
+/// with `Lsm303::<_, D>::new(i2c, sa0)` (or the matching variant), or from a
+/// detection result with [`AnyLsm303::into_driver`].
+pub struct Lsm303<I2C, V> {
     _variant: PhantomData<V>,
     i2c: I2C,
     sa0: SA0,
 }
 
-impl<I2C: I2c, V> LSM303<I2C, V> {
+impl<I2C: I2c, V> Lsm303<I2C, V> {
     /// Wrap an already-identified device.
     ///
     /// Internal: used by [`AnyLsm303::detect`] and the per-variant
@@ -855,28 +888,28 @@ impl<I2C: I2c, V> LSM303<I2C, V> {
 // Direct constructors that skip detection, use when you already know which
 // chip is on the bus. Only the variant you name is monomorphized, so unused
 // variants are stripped from the binary.
-impl<I2C: I2c> LSM303<I2C, Dlh> {
+impl<I2C: I2c> Lsm303<I2C, Dlh> {
     /// Create a driver for an LSM303DLH at the given SA0 address.
     pub fn new(i2c: I2C, sa0: SA0) -> Self {
         Self::new_typed(i2c, sa0)
     }
 }
 
-impl<I2C: I2c> LSM303<I2C, Dlm> {
+impl<I2C: I2c> Lsm303<I2C, Dlm> {
     /// Create a driver for an LSM303DLM at the given SA0 address.
     pub fn new(i2c: I2C, sa0: SA0) -> Self {
         Self::new_typed(i2c, sa0)
     }
 }
 
-impl<I2C: I2c> LSM303<I2C, Dlhc> {
+impl<I2C: I2c> Lsm303<I2C, Dlhc> {
     /// Create a driver for an LSM303DLHC at the given SA0 address.
     pub fn new(i2c: I2C, sa0: SA0) -> Self {
         Self::new_typed(i2c, sa0)
     }
 }
 
-impl<I2C: I2c> LSM303<I2C, D> {
+impl<I2C: I2c> Lsm303<I2C, D> {
     /// Create a driver for an LSM303D at the given SA0 address.
     pub fn new(i2c: I2C, sa0: SA0) -> Self {
         Self::new_typed(i2c, sa0)
@@ -885,7 +918,7 @@ impl<I2C: I2c> LSM303<I2C, D> {
 
 // Operational methods, available once the variant `V` is known.
 #[maybe_async_cfg::maybe(sync(feature = "sync", keep_self), async(feature = "async", keep_self))]
-impl<I2C: I2c, V: Variant> LSM303<I2C, V> {
+impl<I2C: I2c, V: Variant> Lsm303<I2C, V> {
     /// Write `value` to `reg` at the given I²C `address`.
     async fn write_register(
         &mut self,
@@ -1000,7 +1033,7 @@ impl<I2C: I2c, V: Variant> LSM303<I2C, V> {
 // Accelerometer full-scale, gated per variant: each chip accepts only its own
 // range set, and the D uses a different register/field than the DLx trio.
 #[maybe_async_cfg::maybe(sync(feature = "sync", keep_self), async(feature = "async", keep_self))]
-impl<I2C: I2c> LSM303<I2C, Dlh> {
+impl<I2C: I2c> Lsm303<I2C, Dlh> {
     /// Set the accelerometer full-scale range.
     pub async fn set_accel_scale(
         &mut self,
@@ -1029,7 +1062,7 @@ impl<I2C: I2c> LSM303<I2C, Dlh> {
     }
 }
 #[maybe_async_cfg::maybe(sync(feature = "sync", keep_self), async(feature = "async", keep_self))]
-impl<I2C: I2c> LSM303<I2C, Dlm> {
+impl<I2C: I2c> Lsm303<I2C, Dlm> {
     /// Set the accelerometer full-scale range.
     pub async fn set_accel_scale(
         &mut self,
@@ -1058,7 +1091,7 @@ impl<I2C: I2c> LSM303<I2C, Dlm> {
     }
 }
 #[maybe_async_cfg::maybe(sync(feature = "sync", keep_self), async(feature = "async", keep_self))]
-impl<I2C: I2c> LSM303<I2C, Dlhc> {
+impl<I2C: I2c> Lsm303<I2C, Dlhc> {
     /// Set the accelerometer full-scale range.
     pub async fn set_accel_scale(&mut self, scale: DlhcAccScale) -> Result<(), Error<I2C::Error>> {
         self.modify_acc_reg(reg_addr::CTRL_REG4_A, DlhcAccScale::MASK, scale.bits())
@@ -1084,7 +1117,7 @@ impl<I2C: I2c> LSM303<I2C, Dlhc> {
     }
 }
 #[maybe_async_cfg::maybe(sync(feature = "sync", keep_self), async(feature = "async", keep_self))]
-impl<I2C: I2c> LSM303<I2C, D> {
+impl<I2C: I2c> Lsm303<I2C, D> {
     /// Set the accelerometer full-scale range (`AFS` in `CTRL2`).
     pub async fn set_accel_scale(&mut self, scale: DAccScale) -> Result<(), Error<I2C::Error>> {
         self.modify_acc_reg(reg_addr::CTRL2, DAccScale::MASK, scale.bits())
@@ -1120,7 +1153,7 @@ impl<I2C: I2c> LSM303<I2C, D> {
 // Mag ODR is *not* shared: the DLHC supports 220 Hz that the DLH/DLM lack, so
 // its setter lives on the per-variant blocks below.
 #[maybe_async_cfg::maybe(sync(feature = "sync", keep_self), async(feature = "async", keep_self))]
-impl<I2C: I2c, V: Dlx> LSM303<I2C, V> {
+impl<I2C: I2c, V: Dlx> Lsm303<I2C, V> {
     /// Set the magnetometer full-scale range.
     pub async fn set_mag_scale(&mut self, scale: DlxMagScale) -> Result<(), Error<I2C::Error>> {
         self.modify_mag_reg(reg_addr::CRB_REG_M, DlxMagScale::MASK, scale.bits())
@@ -1132,14 +1165,21 @@ impl<I2C: I2c, V: Dlx> LSM303<I2C, V> {
 // embassy executor, so `Send` bounds are unnecessary. Same choice as
 // `embedded-hal-async` makes for its own traits.
 #[allow(async_fn_in_trait)]
+/// Chips with a built-in temperature sensor (currently only the LSM303D).
 pub trait HasTemperature<I2C: I2c> {
-    async fn read_temperature(&mut self) -> Result<u16, Error<I2C::Error>>;
+    /// Read the raw temperature: a signed 12-bit value, 8 LSB/°C.
+    ///
+    /// The zero point is not calibrated, so this is only useful for relative
+    /// changes. The sensor must be enabled first (`TEMP_EN` in `CTRL5`).
+    async fn read_temperature(&mut self) -> Result<i16, Error<I2C::Error>>;
 }
 #[maybe_async_cfg::maybe(sync(feature = "sync", keep_self), async(feature = "async", keep_self))]
-impl<I2C: I2c> HasTemperature<I2C> for LSM303<I2C, D> {
-    async fn read_temperature(&mut self) -> Result<u16, Error<I2C::Error>> {
+impl<I2C: I2c> HasTemperature<I2C> for Lsm303<I2C, D> {
+    async fn read_temperature(&mut self) -> Result<i16, Error<I2C::Error>> {
         let temp_out_l = self.read_acc_reg(TEMP_OUT_L).await?;
         let temp_out_h = self.read_acc_reg(TEMP_OUT_H).await?;
-        Ok(u16::from_le_bytes([temp_out_l, temp_out_h]))
+        // 12-bit two's complement, right-justified: sign-extend from bit 11.
+        let raw = i16::from_le_bytes([temp_out_l, temp_out_h]);
+        Ok((raw << 4) >> 4)
     }
 }
