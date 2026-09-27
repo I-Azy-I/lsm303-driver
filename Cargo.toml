@@ -7,7 +7,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/I-Azy-I/lsm303-driver"
 readme = "README.md"
 keywords = ["lsm303", "accelerometer", "magnetometer", "embedded-hal", "no-std"]
-categories = ["embedded", "no-std", "hardware-support"]
+categories = ["embedded", "no-std", "hardware-support", "asynchronous"]
 
 
 [features]
