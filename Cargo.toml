@@ -8,8 +8,6 @@ edition = "2024"
 default = ["async"]
 sync = ["embedded-hal"]
 async = ["embedded-hal-async"]
-# Derive `defmt::Format` on the public types. Off by default so users who log
-# with something else (or not at all) don't have to link defmt.
 defmt = ["dep:defmt"]
 
 [dependencies]
