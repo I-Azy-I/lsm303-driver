@@ -206,9 +206,9 @@ fn d_acc_odr_matches_table_36() {
 }
 
 #[test]
-fn dlh_dlm_mag_odr_matches_do_table() {
-    // DO[2:0] in CRA_REG_M bits 4:2 (DLH Table 58, DLM Table 56).
-    use DlhDlmMagOdr::*;
+fn dlh_mag_odr_matches_table_58() {
+    // DO[2:0] in CRA_REG_M bits 4:2; 111 is "not used" (DLH Table 58).
+    use DlhMagOdr::*;
     let table = [
         (Hz0_75, 0b000),
         (Hz1_5, 0b001),
@@ -221,13 +221,14 @@ fn dlh_dlm_mag_odr_matches_do_table() {
     for (odr, code) in table {
         assert_eq!(odr.bits(), code << 2, "{odr:?}");
     }
-    assert_eq!(DlhDlmMagOdr::MASK, 0b0001_1100);
+    assert_eq!(DlhMagOdr::MASK, 0b0001_1100);
 }
 
 #[test]
-fn dlhc_mag_odr_matches_table_72() {
-    // DO[2:0] in CRA_REG_M bits 4:2, including 220 Hz at 111 (DLHC Table 72).
-    use DlhcMagOdr::*;
+fn dlm_dlhc_mag_odr_matches_do_table() {
+    // DO[2:0] in CRA_REG_M bits 4:2, including 220 Hz at 111
+    // (DLM Table 56, DLHC Table 72).
+    use DlmDlhcMagOdr::*;
     let table = [
         (Hz0_75, 0b000),
         (Hz1_5, 0b001),
@@ -242,7 +243,7 @@ fn dlhc_mag_odr_matches_table_72() {
         assert_eq!(odr.bits(), code << 2, "{odr:?}");
     }
     // Must not touch TEMP_EN (bit 7).
-    assert_eq!(DlhcMagOdr::MASK, 0b0001_1100);
+    assert_eq!(DlmDlhcMagOdr::MASK, 0b0001_1100);
 }
 
 #[test]
@@ -533,7 +534,7 @@ fn dlhc_setters_preserve_other_bits() {
     let mut dev = Lsm303::<_, Dlhc>::new(bus.clone(), SA0::High);
     run!(dev.set_accel_scale(DlhcAccScale::G8)).unwrap();
     run!(dev.set_accel_odr(DlhcAccOdr::Hz400)).unwrap();
-    run!(dev.set_mag_odr(DlhcMagOdr::Hz220)).unwrap();
+    run!(dev.set_mag_odr(DlmDlhcMagOdr::Hz220)).unwrap();
     run!(dev.set_mag_scale(DlxMagScale::G8_1)).unwrap();
     assert_eq!(run!(dev.read_accel_scale()).unwrap(), DlhcAccScale::G16);
     bus.done();
@@ -548,9 +549,9 @@ fn dlm_setters_preserve_other_bits() {
         // CTRL_REG1_A = PM 010 (low-power) | DR 11 | axes 101 -> normal 100 Hz
         rd(ACC_LOW, 0x20, 0b0101_1101),
         wr(ACC_LOW, 0x20, 0b0010_1101),
-        // CRA_REG_M = DO 100 -> DO = 110 (75 Hz)
+        // CRA_REG_M = DO 100 -> DO = 111 (220 Hz, DLM Table 56)
         rd(MAG, 0x00, 0b0001_0000),
-        wr(MAG, 0x00, 0b0001_1000),
+        wr(MAG, 0x00, 0b0001_1100),
         // CRB_REG_M = GN 001 -> GN = 100 (4.0 gauss)
         rd(MAG, 0x01, 0b0010_0000),
         wr(MAG, 0x01, 0b1000_0000),
@@ -560,7 +561,7 @@ fn dlm_setters_preserve_other_bits() {
     let mut dev = Lsm303::<_, Dlm>::new(bus.clone(), SA0::Low);
     run!(dev.set_accel_scale(DlhDlmAccScale::G8)).unwrap();
     run!(dev.set_accel_odr(DlhDlmAccOdr::Hz100)).unwrap();
-    run!(dev.set_mag_odr(DlhDlmMagOdr::Hz75)).unwrap();
+    run!(dev.set_mag_odr(DlmDlhcMagOdr::Hz220)).unwrap();
     run!(dev.set_mag_scale(DlxMagScale::G4_0)).unwrap();
     assert_eq!(run!(dev.read_accel_scale()).unwrap(), DlhDlmAccScale::G4);
     bus.done();
@@ -584,7 +585,7 @@ fn dlh_setters_preserve_other_bits() {
     let mut dev = Lsm303::<_, Dlh>::new(bus.clone(), SA0::High);
     run!(dev.set_accel_scale(DlhDlmAccScale::G2)).unwrap();
     run!(dev.set_accel_odr(DlhDlmAccOdr::PowerDown)).unwrap();
-    run!(dev.set_mag_odr(DlhDlmMagOdr::Hz0_75)).unwrap();
+    run!(dev.set_mag_odr(DlhMagOdr::Hz0_75)).unwrap();
     assert_eq!(run!(dev.read_accel_scale()).unwrap(), DlhDlmAccScale::G8);
     bus.done();
 }
@@ -681,6 +682,28 @@ fn detect_dlh() {
     ]);
     let found = detect(&mut bus, None, None).unwrap();
     assert_eq!((found.device(), found.sa0()), (Device::Dlh, SA0::High));
+    bus.done();
+}
+
+#[test]
+fn detect_dlm_with_sa0_high_is_reported_as_dlhc() {
+    // Known limitation inherited from Pololu (see `AnyLsm303::detect` docs):
+    // a DLM at the SA0-high address looks exactly like a DLHC on the bus.
+    let dlm_sa0_high = [
+        nack(D_HIGH, WHO_AM_I),
+        rd(D_LOW, WHO_AM_I, 0x3C),
+        rd(ACC_HIGH, CTRL_REG1_A, 0x07),
+        rd(MAG, WHO_AM_I, 0x3C),
+    ];
+    let mut bus = Mock::new(&dlm_sa0_high);
+    let found = detect(&mut bus, None, None).unwrap();
+    assert_eq!(found.device(), Device::Dlhc);
+    bus.done();
+
+    // Pinning the device avoids it.
+    let mut bus = Mock::new(&dlm_sa0_high[..0]);
+    let found = detect(&mut bus, Some(Device::Dlm), Some(SA0::High)).unwrap();
+    assert_eq!(found.device(), Device::Dlm);
     bus.done();
 }
 

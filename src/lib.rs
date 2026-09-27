@@ -341,13 +341,13 @@ impl DAccOdr {
     }
 }
 
-/// Magnetometer output data rate for the DLH and DLM (`DO[2:0]` in `CRA_REG_M`).
+/// Magnetometer output data rate for the DLH (`DO[2:0]` in `CRA_REG_M`).
 ///
-/// These two cap at 75 Hz (`DO = 111` is "not used" per the datasheets). The
-/// DLHC additionally supports 220 Hz — see [`DlhcMagOdr`].
+/// The DLH caps at 75 Hz (`DO = 111` is "not used", DLH datasheet Table 58).
+/// The DLM and DLHC additionally support 220 Hz — see [`DlmDlhcMagOdr`].
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub enum DlhDlmMagOdr {
+pub enum DlhMagOdr {
     Hz0_75,
     Hz1_5,
     Hz3,
@@ -357,30 +357,30 @@ pub enum DlhDlmMagOdr {
     Hz75,
 }
 
-impl DlhDlmMagOdr {
+impl DlhMagOdr {
     /// `DO[2:0]` field mask in `CRA_REG_M` (bits 4:2).
     const MASK: u8 = 0b0001_1100;
 
     fn bits(self) -> u8 {
         match self {
-            DlhDlmMagOdr::Hz0_75 => 0b000 << 2,
-            DlhDlmMagOdr::Hz1_5 => 0b001 << 2,
-            DlhDlmMagOdr::Hz3 => 0b010 << 2,
-            DlhDlmMagOdr::Hz7_5 => 0b011 << 2,
-            DlhDlmMagOdr::Hz15 => 0b100 << 2,
-            DlhDlmMagOdr::Hz30 => 0b101 << 2,
-            DlhDlmMagOdr::Hz75 => 0b110 << 2,
+            DlhMagOdr::Hz0_75 => 0b000 << 2,
+            DlhMagOdr::Hz1_5 => 0b001 << 2,
+            DlhMagOdr::Hz3 => 0b010 << 2,
+            DlhMagOdr::Hz7_5 => 0b011 << 2,
+            DlhMagOdr::Hz15 => 0b100 << 2,
+            DlhMagOdr::Hz30 => 0b101 << 2,
+            DlhMagOdr::Hz75 => 0b110 << 2,
         }
     }
 }
 
-/// Magnetometer output data rate for the DLHC (`DO[2:0]` in `CRA_REG_M`).
+/// Magnetometer output data rate for the DLM and DLHC (`DO[2:0]` in `CRA_REG_M`).
 ///
-/// Same table as the DLH/DLM plus 220 Hz at `DO = 111` (verified against the
-/// LSM303DLHC datasheet, Table 72).
+/// Same table as the DLH plus 220 Hz at `DO = 111` (verified against the
+/// LSM303DLM datasheet, Table 56, and the LSM303DLHC datasheet, Table 72).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub enum DlhcMagOdr {
+pub enum DlmDlhcMagOdr {
     Hz0_75,
     Hz1_5,
     Hz3,
@@ -391,20 +391,20 @@ pub enum DlhcMagOdr {
     Hz220,
 }
 
-impl DlhcMagOdr {
+impl DlmDlhcMagOdr {
     /// `DO[2:0]` field mask in `CRA_REG_M` (bits 4:2).
     const MASK: u8 = 0b0001_1100;
 
     fn bits(self) -> u8 {
         match self {
-            DlhcMagOdr::Hz0_75 => 0b000 << 2,
-            DlhcMagOdr::Hz1_5 => 0b001 << 2,
-            DlhcMagOdr::Hz3 => 0b010 << 2,
-            DlhcMagOdr::Hz7_5 => 0b011 << 2,
-            DlhcMagOdr::Hz15 => 0b100 << 2,
-            DlhcMagOdr::Hz30 => 0b101 << 2,
-            DlhcMagOdr::Hz75 => 0b110 << 2,
-            DlhcMagOdr::Hz220 => 0b111 << 2,
+            DlmDlhcMagOdr::Hz0_75 => 0b000 << 2,
+            DlmDlhcMagOdr::Hz1_5 => 0b001 << 2,
+            DlmDlhcMagOdr::Hz3 => 0b010 << 2,
+            DlmDlhcMagOdr::Hz7_5 => 0b011 << 2,
+            DlmDlhcMagOdr::Hz15 => 0b100 << 2,
+            DlmDlhcMagOdr::Hz30 => 0b101 << 2,
+            DlmDlhcMagOdr::Hz75 => 0b110 << 2,
+            DlmDlhcMagOdr::Hz220 => 0b111 << 2,
         }
     }
 }
@@ -717,6 +717,16 @@ impl AnyLsm303 {
     ///
     /// Pass `Some` for `device` and/or `sa0` to restrict the search; with both
     /// set, the bus is not probed at all.
+    ///
+    /// # DLHC vs DLM
+    ///
+    /// The DLHC and DLM cannot be told apart reliably. The DLHC answers the
+    /// magnetometer `WHO_AM_I` with the DLM's ID (undocumented in its
+    /// datasheet), and its accelerometer uses the same address as a DLM with
+    /// SA0 high. Following Pololu's library, a chip with that ID is reported
+    /// as a DLHC when found at the SA0-high address and as a DLM at SA0-low.
+    /// A DLM with SA0 pulled high is therefore detected as a DLHC; pass
+    /// `Some(Device::Dlm)` to avoid this.
     pub async fn detect<I2C: I2c>(
         i2c: &mut I2C,
         device: Option<Device>,
@@ -1050,8 +1060,8 @@ impl<I2C: I2c> Lsm303<I2C, Dlh> {
     }
 
     /// Set the magnetometer output data rate (`DO` in `CRA_REG_M`).
-    pub async fn set_mag_odr(&mut self, odr: DlhDlmMagOdr) -> Result<(), Error<I2C::Error>> {
-        self.modify_mag_reg(reg_addr::CRA_REG_M, DlhDlmMagOdr::MASK, odr.bits())
+    pub async fn set_mag_odr(&mut self, odr: DlhMagOdr) -> Result<(), Error<I2C::Error>> {
+        self.modify_mag_reg(reg_addr::CRA_REG_M, DlhMagOdr::MASK, odr.bits())
             .await
     }
 
@@ -1078,9 +1088,9 @@ impl<I2C: I2c> Lsm303<I2C, Dlm> {
             .await
     }
 
-    /// Set the magnetometer output data rate (`DO` in `CRA_REG_M`).
-    pub async fn set_mag_odr(&mut self, odr: DlhDlmMagOdr) -> Result<(), Error<I2C::Error>> {
-        self.modify_mag_reg(reg_addr::CRA_REG_M, DlhDlmMagOdr::MASK, odr.bits())
+    /// Set the magnetometer output data rate, including 220 Hz.
+    pub async fn set_mag_odr(&mut self, odr: DlmDlhcMagOdr) -> Result<(), Error<I2C::Error>> {
+        self.modify_mag_reg(reg_addr::CRA_REG_M, DlmDlhcMagOdr::MASK, odr.bits())
             .await
     }
 
@@ -1104,9 +1114,9 @@ impl<I2C: I2c> Lsm303<I2C, Dlhc> {
             .await
     }
 
-    /// Set the magnetometer output data rate, including the DLHC-only 220 Hz.
-    pub async fn set_mag_odr(&mut self, odr: DlhcMagOdr) -> Result<(), Error<I2C::Error>> {
-        self.modify_mag_reg(reg_addr::CRA_REG_M, DlhcMagOdr::MASK, odr.bits())
+    /// Set the magnetometer output data rate, including 220 Hz.
+    pub async fn set_mag_odr(&mut self, odr: DlmDlhcMagOdr) -> Result<(), Error<I2C::Error>> {
+        self.modify_mag_reg(reg_addr::CRA_REG_M, DlmDlhcMagOdr::MASK, odr.bits())
             .await
     }
 
@@ -1150,8 +1160,8 @@ impl<I2C: I2c> Lsm303<I2C, D> {
 }
 
 // Magnetometer full-scale, shared by the DLH/DLM/DLHC (identical `GN` table).
-// Mag ODR is *not* shared: the DLHC supports 220 Hz that the DLH/DLM lack, so
-// its setter lives on the per-variant blocks below.
+// Mag ODR is *not* shared: the DLM and DLHC support 220 Hz that the DLH lacks,
+// so its setter lives on the per-variant blocks above.
 #[maybe_async_cfg::maybe(sync(feature = "sync", keep_self), async(feature = "async", keep_self))]
 impl<I2C: I2c, V: Dlx> Lsm303<I2C, V> {
     /// Set the magnetometer full-scale range.
