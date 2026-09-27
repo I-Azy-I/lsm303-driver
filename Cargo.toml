@@ -2,6 +2,12 @@
 name = "lsm303-driver"
 version = "0.1.0"
 edition = "2024"
+description = "no_std driver for the ST LSM303 accelerometer + magnetometer family (GY-511)"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/I-Azy-I/lsm303-driver"
+readme = "README.md"
+keywords = ["lsm303", "accelerometer", "magnetometer", "embedded-hal", "no-std"]
+categories = ["embedded", "no-std", "hardware-support"]
 
 
 [features]
@@ -15,3 +21,7 @@ embedded-hal = { version = "1", optional = true }
 embedded-hal-async = { version = "1", optional = true }
 defmt = { version = "1", optional = true }
 maybe-async-cfg = "0.2"
+
+[dev-dependencies]
+embedded-hal-mock = { version = "0.11.1", default-features = false, features = ["eh1", "embedded-hal-async"] }
+pollster = "1.0.1"
